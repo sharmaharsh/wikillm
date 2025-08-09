@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local DeepWiki</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .chat-message {
+            max-width: 80%;
+        }
+        .user-message {
+            margin-left: auto;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .assistant-message {
+            margin-right: auto;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .code-block {
+            background-color: #1e1e1e;
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+        .sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+        .sidebar-closed {
+            transform: translateX(-100%);
+        }
+        .loading-dots {
+            display: inline-block;
+        }
+        .loading-dots:after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div id="app">
+        <!-- Header -->
+        <header class="bg-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <button @click="toggleSidebar" class="mr-4 text-gray-600 hover:text-gray-900">
+                            <i class="fas fa-bars text-xl"></i>
+                        </button>
+                        <h1 class="text-2xl font-bold text-gray-900">
+                            <i class="fas fa-book text-blue-600 mr-2"></i>
+                            Local DeepWiki
+                        </h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <div :class="{'bg-green-500': systemStatus.ollama_available, 'bg-red-500': !systemStatus.ollama_available}" 
+                                 class="w-3 h-3 rounded-full"></div>
+                            <span class="text-sm text-gray-600">
+                                {{ systemStatus.ollama_available ? 'Ollama Connected' : 'Ollama Disconnected' }}
+                            </span>
+                        </div>
+                        <button @click="checkHealth" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex h-screen">
+            <!-- Sidebar -->
+            <div :class="{'sidebar-closed': !sidebarOpen}" class="sidebar fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform lg:translate-x-0 lg:static lg:inset-0">
+                <div class="flex flex-col h-full">
+                    <!-- Sidebar Header -->
+                    <div class="flex items-center justify-between p-4 border-b">
+                        <h2 class="text-lg font-semibold text-gray-900">Repositories</h2>
+                        <button @click="showAddRepoModal = true" class="text-blue-600 hover:text-blue-800">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- Repository List -->
+                    <div class="flex-1 overflow-y-auto p-4">
+                        <div v-if="repositories.length === 0" class="text-gray-500 text-center py-8">
+                            <i class="fas fa-folder-open text-4xl mb-2"></i>
+                            <p>No repositories added yet</p>
+                        </div>
+                        <div v-for="repo in repositories" :key="repo.name" 
+                             @click="selectRepository(repo)"
+                             :class="{'bg-blue-50 border-blue-200': selectedRepo?.name === repo.name}"
+                             class="p-3 mb-2 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="font-medium text-gray-900">{{ repo.name }}</h3>
+                                    <p class="text-sm text-gray-600">{{ repo.files }} files</p>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <span v-for="lang in repo.languages" :key="lang" 
+                                              class="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded">
+                                            {{ lang }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <button @click.stop="deleteRepo(repo.name)" 
+                                        class="text-red-500 hover:text-red-700 text-sm">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Stats -->
+                    <div class="p-4 border-t bg-gray-50">
+                        <div class="text-sm text-gray-600">
+                            <div>Repos: {{ stats.repositories || 0 }}</div>
+                            <div>Documents: {{ stats.documents_in_vector_store || 0 }}</div>
+                            <div>Model: {{ systemStatus.ollama_model || 'Unknown' }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="flex-1 flex flex-col lg:ml-0" :class="{'ml-0': !sidebarOpen, 'ml-64': sidebarOpen}">
+                <!-- Tab Navigation -->
+                <div class="bg-white border-b">
+                    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div class="flex space-x-8">
+                            <button v-for="tab in tabs" :key="tab.id"
+                                    @click="activeTab = tab.id"
+                                    :class="{'border-blue-500 text-blue-600': activeTab === tab.id, 'border-transparent text-gray-500': activeTab !== tab.id}"
+                                    class="py-4 px-1 border-b-2 font-medium text-sm hover:text-gray-700">
+                                <i :class="tab.icon" class="mr-2"></i>
+                                {{ tab.name }}
+                            </button>
+                        </div>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="flex-1 overflow-hidden">
+                    <!-- Chat Tab -->
+                    <div v-show="activeTab === 'chat'" class="h-full flex flex-col">
+                        <div class="flex-1 overflow-y-auto p-6">
+                            <div v-if="chatMessages.length === 0" class="text-center py-12">
+                                <i class="fas fa-comments text-6xl text-gray-300 mb-4"></i>
+                                <h3 class="text-xl font-medium text-gray-900 mb-2">Start a conversation</h3>
+                                <p class="text-gray-600">Ask questions about your code repositories</p>
+                            </div>
+                            
+                            <div v-for="(message, index) in chatMessages" :key="index" class="mb-6">
+                                <div :class="{'user-message': message.role === 'user', 'assistant-message': message.role === 'assistant'}"
+                                     class="chat-message p-4 rounded-lg text-white">
+                                    <div class="flex items-start space-x-3">
+                                        <div class="flex-shrink-0">
+                                            <i :class="message.role === 'user' ? 'fas fa-user' : 'fas fa-robot'" 
+                                               class="text-lg"></i>
+                                        </div>
+                                        <div class="flex-1">
+                                            <div v-html="formatMessage(message.content)"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div v-if="isLoading" class="mb-6">
+                                <div class="assistant-message chat-message p-4 rounded-lg text-white">
+                                    <div class="flex items-start space-x-3">
+                                        <div class="flex-shrink-0">
+                                            <i class="fas fa-robot text-lg"></i>
+                                        </div>
+                                        <div class="flex-1">
+                                            <span class="loading-dots">Thinking</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Chat Input -->
+                        <div class="border-t bg-white p-4">
+                            <div class="max-w-4xl mx-auto">
+                                <div class="flex items-end space-x-4">
+                                    <div class="flex-1">
+                                        <textarea v-model="chatInput" 
+                                                @keydown.enter.prevent="sendChatMessage"
+                                                :disabled="isLoading"
+                                                placeholder="Ask a question about your code..."
+                                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                                rows="2"></textarea>
+                                    </div>
+                                    <button @click="sendChatMessage" 
+                                            :disabled="isLoading || !chatInput.trim()"
+                                            class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                                <div v-if="selectedRepo" class="mt-2 text-sm text-gray-600">
+                                    Querying: {{ selectedRepo.name }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Tab -->
+                    <div v-show="activeTab === 'search'" class="h-full p-6">
+                        <div class="max-w-4xl mx-auto">
+                            <div class="mb-6">
+                                <div class="flex space-x-4">
+                                    <input v-model="searchQuery" 
+                                           @keydown.enter="search"
+                                           type="text" 
+                                           placeholder="Search across all repositories..."
+                                           class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                    <button @click="search" 
+                                            :disabled="!searchQuery.trim()"
+                                            class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div v-if="searchResults.length > 0">
+                                <h3 class="text-lg font-medium mb-4">Search Results</h3>
+                                <div v-for="result in searchResults" :key="result.id" 
+                                     class="mb-4 p-4 bg-white rounded-lg shadow">
+                                    <div class="flex justify-between items-start mb-2">
+                                        <div class="text-sm text-gray-600">
+                                            {{ result.metadata.file_path || 'Unknown file' }}
+                                        </div>
+                                        <div class="text-sm text-gray-500">
+                                            Score: {{ (1 - result.distance).toFixed(3) }}
+                                        </div>
+                                    </div>
+                                    <div class="text-gray-900">
+                                        {{ result.text.substring(0, 300) }}...
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div v-else-if="searchQuery && !isSearching" class="text-center py-12">
+                                <i class="fas fa-search text-6xl text-gray-300 mb-4"></i>
+                                <p class="text-gray-600">No results found</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Documentation Tab -->
+                    <div v-show="activeTab === 'docs'" class="h-full p-6">
+                        <div class="max-w-4xl mx-auto">
+                            <div class="mb-6">
+                                <h2 class="text-2xl font-bold mb-4">Documentation</h2>
+                                
+                                <div v-if="selectedRepo" class="mb-4">
+                                    <button @click="generateDocs" 
+                                            :disabled="isGeneratingDocs"
+                                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                                        <i class="fas fa-file-alt mr-2"></i>
+                                        Generate Documentation
+                                    </button>
+                                </div>
+                                
+                                <div v-if="generatedDocs.length > 0">
+                                    <h3 class="text-lg font-medium mb-4">Generated Documents</h3>
+                                    <div class="grid gap-4">
+                                        <div v-for="doc in generatedDocs" :key="doc.path"
+                                             @click="viewDocument(doc)"
+                                             class="p-4 bg-white rounded-lg shadow cursor-pointer hover:shadow-md transition-shadow">
+                                            <div class="flex items-center space-x-3">
+                                                <i class="fas fa-file-markdown text-blue-600"></i>
+                                                <div>
+                                                    <div class="font-medium">{{ doc.name }}</div>
+                                                    <div class="text-sm text-gray-600">{{ doc.path }}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Repository Modal -->
+        <div v-if="showAddRepoModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+                <h3 class="text-lg font-medium mb-4">Add Repository</h3>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Repository Path</label>
+                    <input v-model="newRepoPath" 
+                           type="text" 
+                           placeholder="/path/to/your/repository"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Repository Name (optional)</label>
+                    <input v-model="newRepoName" 
+                           type="text" 
+                           placeholder="my-project"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button @click="showAddRepoModal = false" 
+                            class="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button @click="addRepository" 
+                            :disabled="!newRepoPath.trim()"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">
+                        Add Repository
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Viewer Modal -->
+        <div v-if="showDocModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg w-full max-w-4xl mx-4 h-5/6 flex flex-col">
+                <div class="flex items-center justify-between p-4 border-b">
+                    <h3 class="text-lg font-medium">{{ currentDoc?.name }}</h3>
+                    <button @click="showDocModal = false" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-auto p-4">
+                    <div v-html="formatMarkdown(currentDocContent)" class="prose max-w-none"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    sidebarOpen: true,
+                    activeTab: 'chat',
+                    systemStatus: {
+                        ollama_available: false,
+                        ollama_model: ''
+                    },
+                    stats: {},
+                    repositories: [],
+                    selectedRepo: null,
+                    chatMessages: [],
+                    chatInput: '',
+                    isLoading: false,
+                    searchQuery: '',
+                    searchResults: [],
+                    isSearching: false,
+                    generatedDocs: [],
+                    isGeneratingDocs: false,
+                    showAddRepoModal: false,
+                    newRepoPath: '',
+                    newRepoName: '',
+                    showDocModal: false,
+                    currentDoc: null,
+                    currentDocContent: '',
+                    tabs: [
+                        { id: 'chat', name: 'Chat', icon: 'fas fa-comments' },
+                        { id: 'search', name: 'Search', icon: 'fas fa-search' },
+                        { id: 'docs', name: 'Documentation', icon: 'fas fa-file-alt' }
+                    ]
+                };
+            },
+            async mounted() {
+                await this.checkHealth();
+                await this.loadRepositories();
+                await this.loadStats();
+            },
+            methods: {
+                toggleSidebar() {
+                    this.sidebarOpen = !this.sidebarOpen;
+                },
+                async checkHealth() {
+                    try {
+                        const response = await axios.get('/health');
+                        this.systemStatus = response.data;
+                    } catch (error) {
+                        console.error('Health check failed:', error);
+                        this.systemStatus.ollama_available = false;
+                    }
+                },
+                async loadRepositories() {
+                    try {
+                        const response = await axios.get('/repositories');
+                        this.repositories = response.data.repositories;
+                    } catch (error) {
+                        console.error('Failed to load repositories:', error);
+                    }
+                },
+                async loadStats() {
+                    try {
+                        const response = await axios.get('/stats');
+                        this.stats = response.data;
+                    } catch (error) {
+                        console.error('Failed to load stats:', error);
+                    }
+                },
+                selectRepository(repo) {
+                    this.selectedRepo = repo;
+                    this.loadGeneratedDocs();
+                },
+                async addRepository() {
+                    if (!this.newRepoPath.trim()) return;
+                    
+                    try {
+                        await axios.post('/repositories/analyze', {
+                            repo_path: this.newRepoPath,
+                            repo_name: this.newRepoName || undefined
+                        });
+                        
+                        this.showAddRepoModal = false;
+                        this.newRepoPath = '';
+                        this.newRepoName = '';
+                        
+                        // Reload repositories after a short delay
+                        setTimeout(() => {
+                            this.loadRepositories();
+                            this.loadStats();
+                        }, 2000);
+                        
+                        alert('Repository analysis started. It may take a few moments to complete.');
+                    } catch (error) {
+                        console.error('Failed to add repository:', error);
+                        alert('Failed to add repository: ' + (error.response?.data?.detail || error.message));
+                    }
+                },
+                async deleteRepo(repoName) {
+                    if (!confirm(`Are you sure you want to delete ${repoName}?`)) return;
+                    
+                    try {
+                        await axios.delete(`/repositories/${repoName}`);
+                        await this.loadRepositories();
+                        await this.loadStats();
+                        
+                        if (this.selectedRepo?.name === repoName) {
+                            this.selectedRepo = null;
+                        }
+                    } catch (error) {
+                        console.error('Failed to delete repository:', error);
+                        alert('Failed to delete repository');
+                    }
+                },
+                async sendChatMessage() {
+                    if (!this.chatInput.trim() || this.isLoading) return;
+                    
+                    const userMessage = {
+                        role: 'user',
+                        content: this.chatInput.trim()
+                    };
+                    
+                    this.chatMessages.push(userMessage);
+                    this.chatInput = '';
+                    this.isLoading = true;
+                    
+                    try {
+                        const response = await axios.post('/chat', {
+                            messages: this.chatMessages,
+                            repo_name: this.selectedRepo?.name
+                        });
+                        
+                        this.chatMessages.push({
+                            role: 'assistant',
+                            content: response.data.response
+                        });
+                    } catch (error) {
+                        console.error('Chat failed:', error);
+                        this.chatMessages.push({
+                            role: 'assistant',
+                            content: 'Sorry, I encountered an error processing your request.'
+                        });
+                    } finally {
+                        this.isLoading = false;
+                        this.$nextTick(() => {
+                            // Scroll to bottom
+                            const chatContainer = document.querySelector('.overflow-y-auto');
+                            if (chatContainer) {
+                                chatContainer.scrollTop = chatContainer.scrollHeight;
+                            }
+                        });
+                    }
+                },
+                async search() {
+                    if (!this.searchQuery.trim()) return;
+                    
+                    this.isSearching = true;
+                    this.searchResults = [];
+                    
+                    try {
+                        const endpoint = this.selectedRepo 
+                            ? `/repositories/${this.selectedRepo.name}/search`
+                            : '/search';
+                        
+                        const response = await axios.get(endpoint, {
+                            params: { q: this.searchQuery, limit: 10 }
+                        });
+                        
+                        this.searchResults = response.data.results;
+                    } catch (error) {
+                        console.error('Search failed:', error);
+                    } finally {
+                        this.isSearching = false;
+                    }
+                },
+                async generateDocs() {
+                    if (!this.selectedRepo) return;
+                    
+                    this.isGeneratingDocs = true;
+                    
+                    try {
+                        await axios.post(`/repositories/${this.selectedRepo.name}/generate-docs`, {
+                            repo_name: this.selectedRepo.name,
+                            include_overview: true,
+                            include_api_docs: true,
+                            include_examples: true,
+                            include_architecture: true
+                        });
+                        
+                        alert('Documentation generation started. It may take a few moments to complete.');
+                        
+                        // Reload docs after a delay
+                        setTimeout(() => {
+                            this.loadGeneratedDocs();
+                        }, 5000);
+                    } catch (error) {
+                        console.error('Failed to generate docs:', error);
+                        alert('Failed to generate documentation');
+                    } finally {
+                        this.isGeneratingDocs = false;
+                    }
+                },
+                async loadGeneratedDocs() {
+                    if (!this.selectedRepo) return;
+                    
+                    try {
+                        const response = await axios.get(`/repositories/${this.selectedRepo.name}/docs`);
+                        this.generatedDocs = response.data.documents;
+                    } catch (error) {
+                        console.error('Failed to load generated docs:', error);
+                        this.generatedDocs = [];
+                    }
+                },
+                async viewDocument(doc) {
+                    if (!this.selectedRepo) return;
+                    
+                    try {
+                        const response = await axios.get(`/repositories/${this.selectedRepo.name}/docs/${doc.path}`);
+                        this.currentDoc = doc;
+                        this.currentDocContent = response.data.content;
+                        this.showDocModal = true;
+                    } catch (error) {
+                        console.error('Failed to load document:', error);
+                        alert('Failed to load document');
+                    }
+                },
+                formatMessage(content) {
+                    // Simple markdown-like formatting
+                    return content
+                        .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
+                        .replace(/`([^`]+)`/g, '<code class="bg-gray-200 px-1 rounded">$1</code>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/\n/g, '<br>');
+                },
+                formatMarkdown(content) {
+                    // Basic markdown formatting for document viewer
+                    return content
+                        .replace(/# (.*)/g, '<h1 class="text-3xl font-bold mb-4">$1</h1>')
+                        .replace(/## (.*)/g, '<h2 class="text-2xl font-semibold mb-3">$1</h2>')
+                        .replace(/### (.*)/g, '<h3 class="text-xl font-medium mb-2">$1</h3>')
+                        .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="bg-gray-900 text-white p-4 rounded-lg overflow-x-auto mb-4"><code>$2</code></pre>')
+                        .replace(/`([^`]+)`/g, '<code class="bg-gray-200 px-1 rounded">$1</code>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                        .replace(/\n\n/g, '</p><p class="mb-4">')
+                        .replace(/\n/g, '<br>')
+                        .replace(/^/, '<p class="mb-4">') + '</p>';
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

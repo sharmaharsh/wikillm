@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ollama list:*)",
+      "Bash(curl:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(python3 -m pip install:*)",
+      "Bash(py -m pip install:*)",
+      "Bash(py --version)",
+      "Bash(winget install:*)",
+      "Bash(./python-3.11.9-amd64.exe /quiet InstallAllUsers=1 PrependPath=1)",
+      "Bash(python3.11:*)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" --version)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" -m pip install --upgrade pip)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" -m pip install -r requirements.txt)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" -m pip install chromadb sentence-transformers)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" main.py check)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" main.py analyze . --name wikillm)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" main.py query \"What is this project about?\" --repo wikillm)",
+      "Bash(timeout 30:*)",
+      "Bash(\"/c/Program Files/Python311/python.exe\" main.py query \"How does the RAG system work?\" --repo wikillm)",
+      "Bash(python:*)",
+      "Bash(ollama pull:*)",
+      "Bash(where:*)",
+      "Bash(Get-Command ollama -ErrorAction SilentlyContinue)"
+    ],
+    "deny": []
+  }
+}

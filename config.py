@@ -3,15 +3,15 @@
 import os
 from pathlib import Path
 from typing import List, Dict, Any
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """Application settings."""
     
     # Ollama settings
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama2"  # Default model, can be changed to codellama, mistral, etc.
-    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
+    OLLAMA_MODEL: str = "gemma2:9b"  # Using Gemma2 9B for chat
+    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text:latest"
     
     # Vector database settings
     CHROMA_PERSIST_DIRECTORY: str = "./data/chroma_db"

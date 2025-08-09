@@ -35,32 +35,32 @@ class LocalDeepWiki:
         
         # Check Ollama
         if not self.ollama_client.is_available():
-            print("❌ Ollama server is not available at", settings.OLLAMA_BASE_URL)
+            print("X Ollama server is not available at", settings.OLLAMA_BASE_URL)
             print("Please start Ollama first:")
             print("  ollama serve")
             return False
         
-        print("✅ Ollama server is available")
+        print("OK Ollama server is available")
         
         # Check model
         models = self.ollama_client.list_models()
         model_names = [model['name'] for model in models]
         
         if settings.OLLAMA_MODEL not in model_names:
-            print(f"❌ Model '{settings.OLLAMA_MODEL}' is not available")
+            print(f"X Model '{settings.OLLAMA_MODEL}' is not available")
             print("Available models:", model_names)
             print(f"To download the model, run:")
             print(f"  ollama pull {settings.OLLAMA_MODEL}")
             return False
         
-        print(f"✅ Model '{settings.OLLAMA_MODEL}' is available")
+        print(f"OK Model '{settings.OLLAMA_MODEL}' is available")
         
         # Check embedding model
         if settings.OLLAMA_EMBEDDING_MODEL not in model_names:
-            print(f"⚠️  Embedding model '{settings.OLLAMA_EMBEDDING_MODEL}' not found")
+            print(f"! Embedding model '{settings.OLLAMA_EMBEDDING_MODEL}' not found")
             print("Will use fallback embedding model")
         else:
-            print(f"✅ Embedding model '{settings.OLLAMA_EMBEDDING_MODEL}' is available")
+            print(f"OK Embedding model '{settings.OLLAMA_EMBEDDING_MODEL}' is available")
         
         return True
     
@@ -69,11 +69,11 @@ class LocalDeepWiki:
         repo_path = Path(repo_path).resolve()
         
         if not repo_path.exists():
-            print(f"❌ Repository path does not exist: {repo_path}")
+            print(f"X Repository path does not exist: {repo_path}")
             return False
         
         repo_name = repo_name or repo_path.name
-        print(f"🔍 Analyzing repository: {repo_name}")
+        print(f"* Analyzing repository: {repo_name}")
         print(f"   Path: {repo_path}")
         
         try:
@@ -91,7 +91,7 @@ class LocalDeepWiki:
             print("   Adding to vector store...")
             chunks_added = self.vector_store.add_repository(analysis)
             
-            print(f"✅ Repository analysis complete!")
+            print(f"OK Repository analysis complete!")
             print(f"   Files analyzed: {analysis['statistics']['total_files']}")
             print(f"   Code files: {analysis['statistics']['code_files']}")
             print(f"   Languages: {', '.join(analysis['statistics']['languages'].keys())}")
@@ -100,12 +100,12 @@ class LocalDeepWiki:
             return True
             
         except Exception as e:
-            print(f"❌ Error analyzing repository: {e}")
+            print(f"X Error analyzing repository: {e}")
             return False
     
     def query_repository(self, query: str, repo_name: Optional[str] = None, stream: bool = True):
         """Query a repository using the RAG system."""
-        print(f"🤔 Query: {query}")
+        print(f"? Query: {query}")
         if repo_name:
             print(f"   Repository: {repo_name}")
         
@@ -113,24 +113,24 @@ class LocalDeepWiki:
             result = self.rag_system.query(query, repo_name=repo_name, stream=False)
             
             if result['context']:
-                print("\n📖 Response:")
+                print("\n> Response:")
                 print(result['response'])
                 
                 if result['sources']:
-                    print("\n📚 Sources:")
+                    print("\n* Sources:")
                     for i, source in enumerate(result['sources'], 1):
                         print(f"   {i}. {source.get('file_path', 'Unknown')}")
                         if source.get('element_name'):
                             print(f"      Element: {source['element_name']}")
             else:
-                print("❌ No relevant context found for your query.")
+                print("X No relevant context found for your query.")
                 
         except Exception as e:
-            print(f"❌ Error processing query: {e}")
+            print(f"X Error processing query: {e}")
     
     def interactive_chat(self, repo_name: Optional[str] = None):
         """Start an interactive chat session."""
-        print("💬 Interactive Chat Mode")
+        print("* Interactive Chat Mode")
         print("Type 'quit' or 'exit' to end the session")
         if repo_name:
             print(f"Querying repository: {repo_name}")
@@ -143,7 +143,7 @@ class LocalDeepWiki:
                 user_input = input("\nYou: ").strip()
                 
                 if user_input.lower() in ['quit', 'exit', 'q']:
-                    print("👋 Goodbye!")
+                    print("Goodbye!")
                     break
                 
                 if not user_input:
@@ -158,19 +158,19 @@ class LocalDeepWiki:
                 messages.append({"role": "assistant", "content": response})
                 
             except KeyboardInterrupt:
-                print("\n👋 Goodbye!")
+                print("\nGoodbye!")
                 break
             except Exception as e:
-                print(f"\n❌ Error: {e}")
+                print(f"\nX Error: {e}")
     
     def generate_documentation(self, repo_name: str):
         """Generate documentation for a repository."""
-        print(f"📝 Generating documentation for: {repo_name}")
+        print(f"* Generating documentation for: {repo_name}")
         
         # Load analysis
         analysis_path = Path(settings.REPOS_DIRECTORY) / f"{repo_name}_analysis.json"
         if not analysis_path.exists():
-            print(f"❌ Repository {repo_name} not found. Please analyze it first.")
+            print(f"X Repository {repo_name} not found. Please analyze it first.")
             return False
         
         try:
@@ -185,7 +185,7 @@ class LocalDeepWiki:
             
             docs = self.documentation_builder.generate_full_documentation(analysis, config)
             
-            print(f"✅ Documentation generated!")
+            print(f"OK Documentation generated!")
             print(f"   Files created: {len(docs)}")
             print(f"   Output directory: {Path(settings.DOCS_DIRECTORY) / repo_name}")
             
@@ -195,7 +195,7 @@ class LocalDeepWiki:
             return True
             
         except Exception as e:
-            print(f"❌ Error generating documentation: {e}")
+            print(f"X Error generating documentation: {e}")
             return False
     
     def list_repositories(self):
@@ -212,7 +212,7 @@ class LocalDeepWiki:
             print("No repositories found.")
             return
         
-        print("📚 Analyzed Repositories:")
+        print("* Analyzed Repositories:")
         print("-" * 50)
         
         for analysis_file in analysis_files:
@@ -221,18 +221,18 @@ class LocalDeepWiki:
                 repo_name = analysis.get('repo_name', analysis_file.stem.replace('_analysis', ''))
                 stats = analysis.get('statistics', {})
                 
-                print(f"📁 {repo_name}")
+                print(f"+ {repo_name}")
                 print(f"   Path: {analysis.get('repo_path', 'Unknown')}")
                 print(f"   Files: {stats.get('total_files', 0)} total, {stats.get('code_files', 0)} code")
                 print(f"   Languages: {', '.join(stats.get('languages', {}).keys())}")
                 print()
                 
             except Exception as e:
-                print(f"❌ Error loading {analysis_file}: {e}")
+                print(f"X Error loading {analysis_file}: {e}")
     
     def show_stats(self):
         """Show system statistics."""
-        print("📊 System Statistics")
+        print("* System Statistics")
         print("-" * 30)
         
         # Vector store stats
@@ -250,7 +250,7 @@ class LocalDeepWiki:
         print(f"Generated documentation files: {doc_count}")
         
         # Ollama status
-        print(f"Ollama available: {'✅' if self.ollama_client.is_available() else '❌'}")
+        print(f"Ollama available: {'OK' if self.ollama_client.is_available() else 'X'}")
         print(f"Current model: {settings.OLLAMA_MODEL}")
 
 def main():
@@ -302,9 +302,9 @@ def main():
     
     if args.command == 'check':
         if ldw.check_prerequisites():
-            print("\n✅ All prerequisites are met! You're ready to use Local DeepWiki.")
+            print("\nOK All prerequisites are met! You're ready to use Local DeepWiki.")
         else:
-            print("\n❌ Please fix the issues above before using Local DeepWiki.")
+            print("\nX Please fix the issues above before using Local DeepWiki.")
             sys.exit(1)
     
     elif args.command == 'analyze':
